@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QPoint, Qt, Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem
 
 
@@ -32,6 +33,19 @@ class FileTree(QTreeWidget):
     def populate(self, project_root: Path, files: list[Path]) -> None:
         """Populate the tree from Markdown files."""
         self.clear()
+
+        project_item = QTreeWidgetItem([project_root.name.upper()])
+        project_item.setData(0, Qt.ItemDataRole.UserRole, None)
+        project_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+        project_font = project_item.font(0)
+        project_font.setPointSize(project_font.pointSize() + 1)
+        project_item.setFont(0, project_font)
+        project_item.setForeground(0, QColor("#8f9aa7"))
+        project_item.setChildIndicatorPolicy(
+            QTreeWidgetItem.ChildIndicatorPolicy.DontShowIndicator
+        )
+        self.addTopLevelItem(project_item)
+
         for file_path in files:
             relative = file_path.relative_to(project_root)
             item = QTreeWidgetItem([relative.as_posix()])
