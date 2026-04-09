@@ -4,10 +4,27 @@ from __future__ import annotations
 
 import re
 
-from PySide6.QtGui import QColor, QFont, QSyntaxHighlighter, QTextCharFormat, QTextDocument
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QSyntaxHighlighter,
+    QTextCharFormat,
+    QTextDocument,
+)
 from pygments import lex
 from pygments.lexers import TextLexer, get_lexer_by_name
-from pygments.token import Comment, Keyword, Literal, Name, Number, Operator, Punctuation, String, Text, Token
+from pygments.token import (
+    Comment,
+    Keyword,
+    Literal,
+    Name,
+    Number,
+    Operator,
+    Punctuation,
+    String,
+    Text,
+    Token,
+)
 
 
 class MarkdownHighlighter(QSyntaxHighlighter):
@@ -30,7 +47,9 @@ class MarkdownHighlighter(QSyntaxHighlighter):
                 self._highlight_fence(text)
                 self.setCurrentBlockState(-1)
             else:
-                self._highlight_code_block(text, self._language_for_state(previous_state))
+                self._highlight_code_block(
+                    text, self._language_for_state(previous_state)
+                )
                 self.setCurrentBlockState(previous_state)
             return
 
@@ -60,7 +79,9 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         marker_start = len(match.group(1))
         self.setFormat(marker_start, len(match.group(2)), self._formats["syntax"])
         if match.group(3):
-            self.setFormat(match.start(3), len(match.group(3)), self._formats["code_language"])
+            self.setFormat(
+                match.start(3), len(match.group(3)), self._formats["code_language"]
+            )
         if match.group(4):
             self.setFormat(match.start(4), len(match.group(4)), self._formats["syntax"])
 
@@ -89,14 +110,18 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         content_start = len(match.group(1)) + len(match.group(2)) + len(match.group(3))
         content_length = len(text) - content_start
 
-        self.setFormat(len(match.group(1)), len(match.group(2)), self._formats["syntax"])
+        self.setFormat(
+            len(match.group(1)), len(match.group(2)), self._formats["syntax"]
+        )
         self.setFormat(
             len(match.group(1)) + len(match.group(2)),
             len(match.group(3)),
             self._formats["syntax"],
         )
         if content_length > 0:
-            self.setFormat(content_start, content_length, self._formats[f"heading_{level}"])
+            self.setFormat(
+                content_start, content_length, self._formats[f"heading_{level}"]
+            )
 
     def _highlight_blockquote(self, text: str) -> None:
         """Highlight blockquote markers and content."""
@@ -107,10 +132,16 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         marker_start = len(match.group(1))
         self.setFormat(marker_start, len(match.group(2)), self._formats["syntax"])
         if match.group(3):
-            self.setFormat(marker_start + len(match.group(2)), len(match.group(3)), self._formats["syntax"])
+            self.setFormat(
+                marker_start + len(match.group(2)),
+                len(match.group(3)),
+                self._formats["syntax"],
+            )
         content_start = marker_start + len(match.group(2)) + len(match.group(3))
         if content_start < len(text):
-            self.setFormat(content_start, len(text) - content_start, self._formats["blockquote"])
+            self.setFormat(
+                content_start, len(text) - content_start, self._formats["blockquote"]
+            )
 
     def _highlight_list_marker(self, text: str) -> None:
         """Highlight ordered and unordered list markers."""
@@ -120,7 +151,11 @@ class MarkdownHighlighter(QSyntaxHighlighter):
 
         marker_start = len(match.group(1))
         self.setFormat(marker_start, len(match.group(2)), self._formats["syntax"])
-        self.setFormat(marker_start + len(match.group(2)), len(match.group(3)), self._formats["syntax"])
+        self.setFormat(
+            marker_start + len(match.group(2)),
+            len(match.group(3)),
+            self._formats["syntax"],
+        )
 
     def _highlight_inline_code(self, text: str) -> None:
         """Highlight inline code spans."""
@@ -137,34 +172,64 @@ class MarkdownHighlighter(QSyntaxHighlighter):
 
     def _highlight_emphasis(self, text: str) -> None:
         """Highlight emphasis and strong emphasis."""
-        for match in re.finditer(r"(\*\*|__)(?=\S)(.+?)(?<=\S)\1", text):
-            marker_length = len(match.group(1))
-            content_start = match.start() + marker_length
-            content_length = len(match.group(2))
-            closing_start = content_start + content_length
+        strong_emphasis_patterns = [
+            r"(?<!\*)\*\*\*(?!\*)(?=\S)(.+?)(?<=\S)(?<!\*)\*\*\*(?!\*)",
+            r"(?<!_)___(?!_)(?=\S)(.+?)(?<=\S)(?<!_)___(?!_)",
+        ]
+        for pattern in strong_emphasis_patterns:
+            for match in re.finditer(pattern, text):
+                marker_length = 3
+                content_start = match.start() + marker_length
+                content_length = len(match.group(1))
+                closing_start = content_start + content_length
 
-            self.setFormat(match.start(), marker_length, self._formats["syntax"])
-            self.setFormat(content_start, content_length, self._formats["strong"])
-            self.setFormat(closing_start, marker_length, self._formats["syntax"])
+                self.setFormat(match.start(), marker_length, self._formats["syntax"])
+                self.setFormat(
+                    content_start, content_length, self._formats["strong_emphasis"]
+                )
+                self.setFormat(closing_start, marker_length, self._formats["syntax"])
 
-        for match in re.finditer(r"(?<!\*)\*(?=\S)(.+?)(?<=\S)\*(?!\*)|(?<!_)_(?=\S)(.+?)(?<=\S)_(?!_)", text):
-            token = match.group(0)
-            marker_length = 1
-            content_start = match.start() + marker_length
-            content_length = len(token) - 2
-            closing_start = content_start + content_length
+        strong_patterns = [
+            r"(?<!\*)\*\*(?!\*)(?=\S)(.+?)(?<=\S)(?<!\*)\*\*(?!\*)",
+            r"(?<!_)__(?!_)(?=\S)(.+?)(?<=\S)(?<!_)__(?!_)",
+        ]
+        for pattern in strong_patterns:
+            for match in re.finditer(pattern, text):
+                marker_length = 2
+                content_start = match.start() + marker_length
+                content_length = len(match.group(1))
+                closing_start = content_start + content_length
 
-            self.setFormat(match.start(), marker_length, self._formats["syntax"])
-            self.setFormat(content_start, content_length, self._formats["emphasis"])
-            self.setFormat(closing_start, marker_length, self._formats["syntax"])
+                self.setFormat(match.start(), marker_length, self._formats["syntax"])
+                self.setFormat(content_start, content_length, self._formats["strong"])
+                self.setFormat(closing_start, marker_length, self._formats["syntax"])
+
+        emphasis_patterns = [
+            r"(?<!\*)\*(?!\*)(?=\S)(.+?)(?<=\S)(?<!\*)\*(?!\*)",
+            r"(?<!_)_(?!_)(?=\S)(.+?)(?<=\S)(?<!_)_(?!_)",
+        ]
+        for pattern in emphasis_patterns:
+            for match in re.finditer(pattern, text):
+                marker_length = 1
+                content_start = match.start() + marker_length
+                content_length = len(match.group(1))
+                closing_start = content_start + content_length
+
+                self.setFormat(match.start(), marker_length, self._formats["syntax"])
+                self.setFormat(content_start, content_length, self._formats["emphasis"])
+                self.setFormat(closing_start, marker_length, self._formats["syntax"])
 
     def _highlight_links(self, text: str) -> None:
         """Highlight links with subdued syntax and readable labels."""
         for match in re.finditer(r"(!?\[)([^\]]+)(\]\()([^)]+)(\))", text):
             self.setFormat(match.start(1), len(match.group(1)), self._formats["syntax"])
-            self.setFormat(match.start(2), len(match.group(2)), self._formats["link_text"])
+            self.setFormat(
+                match.start(2), len(match.group(2)), self._formats["link_text"]
+            )
             self.setFormat(match.start(3), len(match.group(3)), self._formats["syntax"])
-            self.setFormat(match.start(4), len(match.group(4)), self._formats["link_url"])
+            self.setFormat(
+                match.start(4), len(match.group(4)), self._formats["link_url"]
+            )
             self.setFormat(match.start(5), len(match.group(5)), self._formats["syntax"])
 
     def _build_formats(self) -> dict[str, QTextCharFormat]:
@@ -224,16 +289,29 @@ class MarkdownHighlighter(QSyntaxHighlighter):
                 background="#221f22",
                 family="JetBrains Mono",
             ),
+            "strong_emphasis": self._format(weight=QFont.Weight.Bold, italic=True),
             "strong": self._format(weight=QFont.Weight.Bold),
             "emphasis": self._format(italic=True),
             "link_text": self._format(foreground="#9bc7f0", underline=True),
             "link_url": self._format(foreground="#7088a0"),
-            "heading_1": self._format(foreground="#f2ede4", weight=QFont.Weight.Bold, point_delta=8),
-            "heading_2": self._format(foreground="#efe9dd", weight=QFont.Weight.Bold, point_delta=6),
-            "heading_3": self._format(foreground="#ebe4d9", weight=QFont.Weight.DemiBold, point_delta=4),
-            "heading_4": self._format(foreground="#e7dfd2", weight=QFont.Weight.DemiBold, point_delta=3),
-            "heading_5": self._format(foreground="#e2dacd", weight=QFont.Weight.DemiBold, point_delta=2),
-            "heading_6": self._format(foreground="#ddd4c7", weight=QFont.Weight.Medium, point_delta=1),
+            "heading_1": self._format(
+                foreground="#f2ede4", weight=QFont.Weight.Bold, point_delta=8
+            ),
+            "heading_2": self._format(
+                foreground="#efe9dd", weight=QFont.Weight.Bold, point_delta=6
+            ),
+            "heading_3": self._format(
+                foreground="#ebe4d9", weight=QFont.Weight.DemiBold, point_delta=4
+            ),
+            "heading_4": self._format(
+                foreground="#e7dfd2", weight=QFont.Weight.DemiBold, point_delta=3
+            ),
+            "heading_5": self._format(
+                foreground="#e2dacd", weight=QFont.Weight.DemiBold, point_delta=2
+            ),
+            "heading_6": self._format(
+                foreground="#ddd4c7", weight=QFont.Weight.Medium, point_delta=1
+            ),
         }
 
     def _format(

@@ -5,30 +5,40 @@ from __future__ import annotations
 import base64
 
 from PySide6.QtCore import QUrl
-from PySide6.QtGui import QGuiApplication
-from PySide6.QtWidgets import QTextBrowser
+from PySide6.QtGui import QDesktopServices, QGuiApplication
+from PySide6.QtWebEngineCore import QWebEnginePage
+from PySide6.QtWebEngineWidgets import QWebEngineView
 
 
-class PreviewBrowser(QTextBrowser):
-    """Markdown preview browser with in-document code copy support."""
+class PreviewPage(QWebEnginePage):
+    """Custom web page to intercept preview-specific links."""
 
-    def __init__(self, parent: object | None = None) -> None:
-        """Initialize the preview browser."""
-        super().__init__(parent)
-        self.setReadOnly(True)
-        self.setOpenLinks(False)
-        self.setOpenExternalLinks(True)
-        self.anchorClicked.connect(self._handle_anchor_clicked)
-
-    def _handle_anchor_clicked(self, url: QUrl) -> None:
-        """Handle internal preview actions such as copying code blocks."""
+    def acceptNavigationRequest(self, url: QUrl, nav_type, is_main_frame: bool) -> bool:
+        """Handle copy links internally and open external links in system browser."""
         if url.scheme() == "copy-code":
             encoded = url.path().lstrip("/")
             try:
                 text = base64.urlsafe_b64decode(encoded.encode("ascii")).decode("utf-8")
             except Exception:
-                return
+                return False
             QGuiApplication.clipboard().setText(text)
-            return
+            return False
 
-        self.setSource(url)
+        if url.scheme() in {"http", "https", "mailto"}:
+            QDesktopServices.openUrl(url)
+            return False
+
+        return super().acceptNavigationRequest(url, nav_type, is_main_frame)
+
+
+class PreviewBrowser(QWebEngineView):
+    """Markdown preview browser backed by Qt WebEngine."""
+
+    def __init__(self, parent: object | None = None) -> None:
+        """Initialize the preview browser."""
+        super().__init__(parent)
+        self.setPage(PreviewPage(self))
+
+    def clear(self) -> None:
+        """Clear preview content."""
+        self.setHtml("")

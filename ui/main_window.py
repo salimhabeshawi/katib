@@ -33,7 +33,9 @@ from ui.preview import PreviewBrowser
 class MainWindow(QMainWindow):
     """Primary application window."""
 
-    def __init__(self, settings_service: SettingsService, parent: object | None = None) -> None:
+    def __init__(
+        self, settings_service: SettingsService, parent: object | None = None
+    ) -> None:
         """Initialize the main window and restore state."""
         super().__init__(parent)
         self._settings_service = settings_service
@@ -177,8 +179,8 @@ class MainWindow(QMainWindow):
         new_path = self._project_manager.rename_file(self._current_file, candidate)
         self._current_file = new_path
         if old_relative in self._document_directions:
-            self._document_directions[self._project.relative_path(new_path)] = self._document_directions.pop(
-                old_relative
+            self._document_directions[self._project.relative_path(new_path)] = (
+                self._document_directions.pop(old_relative)
             )
         self._refresh_tree(select_path=new_path)
         self._persist_state()
@@ -233,7 +235,9 @@ class MainWindow(QMainWindow):
     def toggle_preview(self) -> None:
         """Toggle between edit and preview modes."""
         showing_preview = self._stack.currentWidget() is self._preview_page
-        self._stack.setCurrentWidget(self._editor_page if showing_preview else self._preview_page)
+        self._stack.setCurrentWidget(
+            self._editor_page if showing_preview else self._preview_page
+        )
         self._state.preview_visible = not showing_preview
         if not showing_preview:
             self._update_preview()
@@ -278,6 +282,47 @@ class MainWindow(QMainWindow):
             return
         self.set_global_direction(next_direction)
 
+    def export_pdf(self) -> None:
+        """Export current editor content to a PDF file."""
+        suggested_name = (
+            f"{self._current_file.stem}.pdf" if self._current_file else "document.pdf"
+        )
+        start_dir = str(self._project.root) if self._project else ""
+        selected, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export as PDF",
+            str(Path(start_dir) / suggested_name) if start_dir else suggested_name,
+            "PDF Files (*.pdf)",
+        )
+        if not selected:
+            return
+
+        output_path = Path(selected)
+        if output_path.suffix.lower() != ".pdf":
+            output_path = output_path.with_suffix(".pdf")
+
+        direction = (
+            self._document_direction(self._current_file)
+            if self._current_file
+            else self._state.global_direction
+        )
+        source_root = self._project.root if self._project else Path.cwd()
+        title = self._current_file.stem if self._current_file else "Katib Export"
+
+        try:
+            self._markdown_service.export_pdf(
+                self._editor.toPlainText(),
+                output_path,
+                source_root=source_root,
+                direction=direction,
+                title=title,
+            )
+        except Exception as exc:
+            self._show_error(f"Failed to export PDF: {exc}")
+            return
+
+        self._update_status(f"Exported {output_path.name}")
+
     def _create_actions(self) -> None:
         """Create actions, menus, and shortcuts."""
         open_project_action = QAction("Open Project", self)
@@ -300,6 +345,10 @@ class MainWindow(QMainWindow):
         delete_file_action.setShortcut(QKeySequence.Delete)
         delete_file_action.triggered.connect(self.delete_current_file)
 
+        export_pdf_action = QAction("Export as PDF", self)
+        export_pdf_action.setShortcut(QKeySequence("Ctrl+Shift+E"))
+        export_pdf_action.triggered.connect(self.export_pdf)
+
         preview_action = QAction("Toggle Preview", self)
         preview_action.setShortcut(QKeySequence("Ctrl+P"))
         preview_action.triggered.connect(self.toggle_preview)
@@ -315,6 +364,8 @@ class MainWindow(QMainWindow):
         file_menu.addAction(new_file_action)
         file_menu.addAction(rename_file_action)
         file_menu.addAction(delete_file_action)
+        file_menu.addSeparator()
+        file_menu.addAction(export_pdf_action)
 
         view_menu = self.menuBar().addMenu("View")
         view_menu.addAction(preview_action)
@@ -326,6 +377,7 @@ class MainWindow(QMainWindow):
             new_file_action,
             rename_file_action,
             delete_file_action,
+            export_pdf_action,
             preview_action,
             sidebar_action,
         ]:
@@ -396,8 +448,7 @@ class MainWindow(QMainWindow):
         if self._is_loading_file:
             return
         self._save_timer.start()
-        if self._stack.currentWidget() is self._preview_page:
-            self._update_preview()
+        self._update_preview()
 
     def _save_current_file(self) -> None:
         """Persist the current document if one is opened."""
@@ -409,7 +460,11 @@ class MainWindow(QMainWindow):
 
     def _update_preview(self) -> None:
         """Refresh the rendered Markdown preview."""
-        direction = self._document_direction(self._current_file) if self._current_file else self._state.global_direction
+        direction = (
+            self._document_direction(self._current_file)
+            if self._current_file
+            else self._state.global_direction
+        )
         html = self._markdown_service.render(self._editor.toPlainText(), direction)
         self._preview.setHtml(html)
 
@@ -418,7 +473,9 @@ class MainWindow(QMainWindow):
         if not self._current_file:
             self.statusBar().showMessage(prefix or "Ready")
             return
-        mode = "Preview" if self._stack.currentWidget() is self._preview_page else "Edit"
+        mode = (
+            "Preview" if self._stack.currentWidget() is self._preview_page else "Edit"
+        )
         direction = self._document_direction(self._current_file).upper()
         text = f"{mode}  |  {direction}  |  {self._current_file.name}"
         if prefix:
@@ -428,11 +485,7 @@ class MainWindow(QMainWindow):
     def _apply_direction(self, direction: str) -> None:
         """Apply direction to editor and preview widgets."""
         self._editor.set_direction(direction)
-        preview_direction = (
-            Qt.LayoutDirection.RightToLeft if direction == "rtl" else Qt.LayoutDirection.LeftToRight
-        )
-        self._preview.setLayoutDirection(preview_direction)
-        self._preview.document().setDefaultTextOption(self._editor.document().defaultTextOption())
+        self._update_preview()
         self._update_direction_button()
         self._update_status()
 
