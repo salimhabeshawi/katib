@@ -27,23 +27,23 @@ It is built for writers who switch between English and Arabic, and need directio
 
 ### Writing Experience
 
-| Feature | Description |
-|---|---|
-| Smart Markdown typing | Auto-pairing for markers and symbols, plus fence/bracket enter splitting |
-| List ergonomics | Dash list indentation helpers and single-backspace list exit |
-| Line numbers | Gutter with active-line highlighting and RTL-aware placement |
-| Vim mode | Normal/Insert modes, visual modes, core motions/operators, `jj` insert escape |
-| Direction control | Toggle RTL/LTR per document with stored preference |
+| Feature               | Description                                                                   |
+| --------------------- | ----------------------------------------------------------------------------- |
+| Smart Markdown typing | Auto-pairing for markers and symbols, plus fence/bracket enter splitting      |
+| List ergonomics       | Dash list indentation helpers and single-backspace list exit                  |
+| Line numbers          | Gutter with active-line highlighting and RTL-aware placement                  |
+| Vim mode              | Normal/Insert modes, visual modes, core motions/operators, `jj` insert escape |
+| Direction control     | Toggle RTL/LTR per document with stored preference                            |
 
 ### Preview and Export
 
-| Feature | Description |
-|---|---|
-| Live preview | Immediate HTML preview from current editor text |
-| Markdown engine | `markdown-it-py` with table and task list support |
-| Syntax highlighting | Pygments-based fenced code highlighting |
-| PDF export | Export current document to PDF with typography and direction styling |
-| Arabic support | Arabic-friendly font stack (Noto Kufi Arabic) in editor and rendered output |
+| Feature             | Description                                                                 |
+| ------------------- | --------------------------------------------------------------------------- |
+| Live preview        | Immediate HTML preview from current editor text                             |
+| Markdown engine     | `markdown-it-py` with table and task list support                           |
+| Syntax highlighting | Pygments-based fenced code highlighting                                     |
+| PDF export          | Export current document to PDF with typography and direction styling        |
+| Arabic support      | Arabic-friendly font stack (Noto Kufi Arabic) in editor and rendered output |
 
 ## Technology Stack
 

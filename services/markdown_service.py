@@ -98,12 +98,12 @@ class MarkdownService:
         lang = "ar" if safe_direction == "rtl" else "en"
         body_html = self._md.render(text).strip()
         if not body_html:
-          empty_message = (
-            "لا يوجد محتوى للمعاينة بعد."
-            if safe_direction == "rtl"
-            else "Nothing to preview yet."
-          )
-          body_html = f"<p>{html.escape(empty_message)}</p>"
+            empty_message = (
+                "لا يوجد محتوى للمعاينة بعد."
+                if safe_direction == "rtl"
+                else "Nothing to preview yet."
+            )
+            body_html = f"<p>{html.escape(empty_message)}</p>"
 
         full_html = f"""
 <!DOCTYPE html>
