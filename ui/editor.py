@@ -4,17 +4,37 @@ from __future__ import annotations
 
 import re
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QRect, QSize, Qt
 from PySide6.QtGui import (
+    QColor,
     QKeyEvent,
+    QPainter,
     QTextBlock,
     QTextBlockFormat,
     QTextCursor,
+    QTextFormat,
     QTextOption,
 )
-from PySide6.QtWidgets import QFrame, QPlainTextEdit
+from PySide6.QtWidgets import QFrame, QPlainTextEdit, QTextEdit, QWidget
 
 from ui.markdown_highlighter import MarkdownHighlighter
+
+
+class _LineNumberArea(QWidget):
+    """Paintable gutter area for editor line numbers."""
+
+    def __init__(self, editor: "MarkdownEditor") -> None:
+        """Initialize the line-number gutter."""
+        super().__init__(editor)
+        self._editor = editor
+
+    def sizeHint(self) -> QSize:
+        """Return the gutter preferred width."""
+        return QSize(self._editor._line_number_area_width(), 0)
+
+    def paintEvent(self, event) -> None:
+        """Delegate gutter painting to the editor."""
+        self._editor._paint_line_number_area(event)
 
 
 class MarkdownEditor(QPlainTextEdit):
@@ -24,10 +44,13 @@ class MarkdownEditor(QPlainTextEdit):
     _OPENING_PAIRS = {"(": ")", "[": "]", "{": "}"}
     _SYMMETRIC_PAIRS = {'"': '"', "'": "'"}
     _CLOSING_BRACKETS = {")", "]", "}"}
+    _LINE_NUMBER_GAP = 14
 
     def __init__(self, parent: object | None = None) -> None:
         """Initialize the writing editor."""
         super().__init__(parent)
+        self._line_number_area = _LineNumberArea(self)
+
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.setTabStopDistance(32)
         self.setPlaceholderText("Start writing...")
@@ -58,6 +81,96 @@ class MarkdownEditor(QPlainTextEdit):
         margins.setTop(24)
         margins.setBottom(24)
         self.setContentsMargins(margins)
+
+        self.blockCountChanged.connect(self._update_line_number_area_width)
+        self.updateRequest.connect(self._update_line_number_area)
+        self.cursorPositionChanged.connect(self._refresh_line_number_area)
+        self._update_line_number_area_width(0)
+        self._highlight_current_line()
+
+    def resizeEvent(self, event) -> None:
+        """Resize the line-number gutter with the editor viewport."""
+        super().resizeEvent(event)
+        content_rect = self.contentsRect()
+        self._line_number_area.setGeometry(
+            QRect(
+                content_rect.left(),
+                content_rect.top(),
+                self._line_number_area_width(),
+                content_rect.height(),
+            )
+        )
+
+    def _line_number_area_width(self) -> int:
+        """Compute the width needed for rendering all line numbers."""
+        digits = max(2, len(str(max(1, self.blockCount()))))
+        text_width = 12 + self.fontMetrics().horizontalAdvance("9") * digits
+        return text_width + self._LINE_NUMBER_GAP
+
+    def _update_line_number_area_width(self, _block_count: int) -> None:
+        """Adjust viewport margins to reserve line-number gutter space."""
+        self.setViewportMargins(self._line_number_area_width(), 0, 0, 0)
+
+    def _update_line_number_area(self, rect, dy: int) -> None:
+        """Update or scroll the gutter when editor content updates."""
+        if dy:
+            self._line_number_area.scroll(0, dy)
+        else:
+            self._line_number_area.update(
+                0, rect.y(), self._line_number_area.width(), rect.height()
+            )
+
+        if rect.contains(self.viewport().rect()):
+            self._update_line_number_area_width(0)
+
+    def _refresh_line_number_area(self) -> None:
+        """Repaint gutter to reflect the active cursor line."""
+        self._line_number_area.update()
+        self._highlight_current_line()
+
+    def _highlight_current_line(self) -> None:
+        """Highlight the line that currently contains the cursor."""
+        selection = QTextEdit.ExtraSelection()
+        selection.format.setBackground(QColor("#1a2028"))
+        selection.format.setProperty(QTextFormat.Property.FullWidthSelection, True)
+        selection.cursor = self.textCursor()
+        selection.cursor.clearSelection()
+        self.setExtraSelections([selection])
+
+    def _paint_line_number_area(self, event) -> None:
+        """Paint line numbers beside the editor text."""
+        painter = QPainter(self._line_number_area)
+        painter.fillRect(event.rect(), QColor("#0f1318"))
+
+        block = self.firstVisibleBlock()
+        block_number = block.blockNumber()
+        top = int(
+            self.blockBoundingGeometry(block).translated(self.contentOffset()).top()
+        )
+        bottom = top + int(self.blockBoundingRect(block).height())
+        current_block = self.textCursor().blockNumber()
+        number_width = self._line_number_area.width() - self._LINE_NUMBER_GAP
+
+        while block.isValid() and top <= event.rect().bottom():
+            if block.isVisible() and bottom >= event.rect().top():
+                painter.setPen(
+                    QColor("#cdd6df")
+                    if block_number == current_block
+                    else QColor("#66707d")
+                )
+                painter.drawText(
+                    0,
+                    top,
+                    number_width,
+                    max(1, bottom - top),
+                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                    str(block_number + 1),
+                )
+
+            block = block.next()
+            block_number += 1
+            top = bottom
+            bottom = top + int(self.blockBoundingRect(block).height())
 
     def set_direction(self, direction: str) -> None:
         """Apply RTL or LTR direction to the editor."""
