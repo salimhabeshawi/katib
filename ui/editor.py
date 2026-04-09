@@ -63,7 +63,7 @@ class MarkdownEditor(QPlainTextEdit):
         self.setCenterOnScroll(True)
 
         font = self.font()
-        font.setFamilies(["JetBrains Mono", "Cascadia Mono", "Noto Naskh Arabic"])
+        font.setFamilies(["JetBrains Mono", "Cascadia Mono", "Noto Kufi Arabic"])
         font.setPointSize(12)
         self.setFont(font)
         self._highlighter = MarkdownHighlighter(self.document())
@@ -95,12 +95,22 @@ class MarkdownEditor(QPlainTextEdit):
     def resizeEvent(self, event) -> None:
         """Resize the line-number gutter with the editor viewport."""
         super().resizeEvent(event)
+        self._position_line_number_area()
+
+    def _position_line_number_area(self) -> None:
+        """Place the line-number gutter on the side matching text direction."""
         content_rect = self.contentsRect()
+        gutter_width = self._line_number_area_width()
+        gutter_x = (
+            content_rect.right() - gutter_width + 1
+            if self.layoutDirection() == Qt.LayoutDirection.RightToLeft
+            else content_rect.left()
+        )
         self._line_number_area.setGeometry(
             QRect(
-                content_rect.left(),
+                gutter_x,
                 content_rect.top(),
-                self._line_number_area_width(),
+                gutter_width,
                 content_rect.height(),
             )
         )
@@ -113,7 +123,11 @@ class MarkdownEditor(QPlainTextEdit):
 
     def _update_line_number_area_width(self, _block_count: int) -> None:
         """Adjust viewport margins to reserve line-number gutter space."""
-        self.setViewportMargins(self._line_number_area_width(), 0, 0, 0)
+        gutter = self._line_number_area_width()
+        if self.layoutDirection() == Qt.LayoutDirection.RightToLeft:
+            self.setViewportMargins(0, 0, gutter, 0)
+        else:
+            self.setViewportMargins(gutter, 0, 0, 0)
 
     def _update_line_number_area(self, rect, dy: int) -> None:
         """Update or scroll the gutter when editor content updates."""
@@ -191,10 +205,20 @@ class MarkdownEditor(QPlainTextEdit):
             Qt.LayoutDirection.RightToLeft if is_rtl else Qt.LayoutDirection.LeftToRight
         )
         self.document().setDefaultTextOption(option)
+        self._update_line_number_area_width(0)
+        self._position_line_number_area()
+        self._line_number_area.update()
+        self.viewport().update()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         """Handle editor key presses with Markdown-aware indentation."""
         if self._vim.handle_keypress(event):
+            return
+
+        if self._handle_empty_list_backspace(event):
+            return
+
+        if self._handle_dash_list_indent_on_space(event):
             return
 
         if self._handle_symbol_autoclose(event):
@@ -224,6 +248,69 @@ class MarkdownEditor(QPlainTextEdit):
             return
 
         super().keyPressEvent(event)
+
+    def _handle_empty_list_backspace(self, event: QKeyEvent) -> bool:
+        """Collapse an empty list marker line with a single Backspace."""
+        if event.key() != Qt.Key.Key_Backspace:
+            return False
+        if event.modifiers() != Qt.KeyboardModifier.NoModifier:
+            return False
+
+        cursor = self.textCursor()
+        if cursor.hasSelection():
+            return False
+
+        block = cursor.block()
+        line = block.text()
+        position = cursor.positionInBlock()
+
+        if position != len(line):
+            return False
+        if not re.match(r"^\s*[-+*]\s*$", line):
+            return False
+
+        cursor.beginEditBlock()
+        cursor.setPosition(block.position())
+        cursor.movePosition(
+            QTextCursor.MoveOperation.EndOfBlock,
+            QTextCursor.MoveMode.KeepAnchor,
+        )
+        cursor.removeSelectedText()
+        cursor.endEditBlock()
+        self.setTextCursor(cursor)
+        return True
+
+    def _handle_dash_list_indent_on_space(self, event: QKeyEvent) -> bool:
+        """Convert '-' at line start into an indented dash list marker on space."""
+        if event.key() != Qt.Key.Key_Space:
+            return False
+        if event.modifiers() != Qt.KeyboardModifier.NoModifier:
+            return False
+
+        cursor = self.textCursor()
+        if cursor.hasSelection():
+            return False
+
+        block = cursor.block()
+        line = block.text()
+        position = cursor.positionInBlock()
+        if position != len(line):
+            return False
+        if not re.match(r"^\s*-$", line):
+            return False
+
+        replacement = "    - "
+        cursor.beginEditBlock()
+        cursor.setPosition(block.position())
+        cursor.movePosition(
+            QTextCursor.MoveOperation.EndOfBlock,
+            QTextCursor.MoveMode.KeepAnchor,
+        )
+        cursor.removeSelectedText()
+        cursor.insertText(replacement)
+        cursor.endEditBlock()
+        self.setTextCursor(cursor)
+        return True
 
     def set_vim_mode(self, enabled: bool) -> None:
         """Enable or disable Vim-style modal keybindings."""
@@ -453,10 +540,15 @@ class MarkdownEditor(QPlainTextEdit):
 
         unordered = re.match(r"^(\s*)([-+*])(\s+)(.*)$", line)
         if unordered:
+            indent = unordered.group(1)
+            marker = unordered.group(2)
+            spacing = unordered.group(3)
+            if marker == "-" and len(indent) < 4:
+                indent = "    "
             content = unordered.group(4)
             if not content.strip():
-                return unordered.group(1)
-            return f"{unordered.group(1)}{unordered.group(2)}{unordered.group(3)}"
+                return indent
+            return f"{indent}{marker}{spacing}"
 
         checklist = re.match(r"^(\s*)([-+*])(\s+\[[ xX]\]\s+)(.*)$", line)
         if checklist:

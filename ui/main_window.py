@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QInputDialog,
     QHBoxLayout,
+    QLabel,
     QMainWindow,
     QMenu,
     QMessageBox,
@@ -88,6 +89,15 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(self._splitter)
         self.setStatusBar(QStatusBar())
+        self._status_detail = QLabel("")
+        self._status_detail.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        self._status_detail.setSizePolicy(
+            QSizePolicy.Policy.Maximum,
+            QSizePolicy.Policy.Preferred,
+        )
+        self.statusBar().addPermanentWidget(self._status_detail)
         self.statusBar().showMessage("Ready")
         self.resize(1180, 780)
         self.setWindowTitle("Katib")
@@ -291,9 +301,9 @@ class MainWindow(QMainWindow):
             output_path = output_path.with_suffix(".pdf")
 
         direction = (
-            self._document_direction(self._current_file)
-            if self._current_file
-            else self._state.global_direction
+            "rtl"
+            if self._editor.layoutDirection() == Qt.LayoutDirection.RightToLeft
+            else "ltr"
         )
         source_root = self._project.root if self._project else Path.cwd()
         title = self._current_file.stem if self._current_file else "Katib Export"
@@ -387,7 +397,7 @@ class MainWindow(QMainWindow):
         file_menu.addSeparator()
         file_menu.addAction(export_pdf_action)
 
-        view_menu = self.menuBar().addMenu("View")
+        view_menu = self.menuBar().addMenu("Preferences")
         view_menu.addAction(preview_action)
         view_menu.addAction(sidebar_action)
         view_menu.addSeparator()
@@ -480,7 +490,7 @@ class MainWindow(QMainWindow):
             return
         self._project_manager.write_file(self._current_file, self._editor.toPlainText())
         self._update_preview()
-        self._update_status("Saved")
+        self._update_status()
 
     def _update_preview(self) -> None:
         """Refresh the rendered Markdown preview."""
@@ -495,18 +505,25 @@ class MainWindow(QMainWindow):
     def _update_status(self, prefix: str | None = None) -> None:
         """Update the status bar."""
         if not self._current_file:
+            self._status_detail.setText("")
             self.statusBar().showMessage(prefix or "Ready")
             return
+
+        word_count = len(self._editor.toPlainText().split())
         mode = (
             "Preview" if self._stack.currentWidget() is self._preview_page else "Edit"
         )
-        if self._stack.currentWidget() is self._editor_page:
-            mode = f"{mode}  |  Vim {self._editor.vim_mode_label()}"
+        if (
+            self._stack.currentWidget() is self._editor_page
+            and self._editor.vim_mode_enabled()
+        ):
+            mode = f"{mode}  |  {self._editor.vim_mode_label()}"
         direction = self._document_direction(self._current_file).upper()
-        text = f"{mode}  |  {direction}  |  {self._current_file.name}"
+        text = f"{mode}  |  {direction}"
         if prefix:
             text = f"{prefix}  |  {text}"
         self.statusBar().showMessage(text)
+        self._status_detail.setText(f"{word_count} words  |  {self._current_file.name}")
 
     def _apply_direction(self, direction: str) -> None:
         """Apply direction to editor and preview widgets."""

@@ -42,6 +42,52 @@ def build_stylesheet() -> str:
         border: none;
         font-size: 15px;
     }
+    QPlainTextEdit QScrollBar:vertical {
+        background: #161b21;
+        width: 12px;
+        margin: 2px;
+        border: 1px solid #2a323c;
+        border-radius: 6px;
+    }
+    QPlainTextEdit QScrollBar::handle:vertical {
+        background: #5a6674;
+        min-height: 28px;
+        border-radius: 5px;
+    }
+    QPlainTextEdit QScrollBar::handle:vertical:hover {
+        background: #697686;
+    }
+    QPlainTextEdit QScrollBar::add-line:vertical,
+    QPlainTextEdit QScrollBar::sub-line:vertical,
+    QPlainTextEdit QScrollBar::add-page:vertical,
+    QPlainTextEdit QScrollBar::sub-page:vertical {
+        background: transparent;
+        border: none;
+        height: 0;
+    }
+    QPlainTextEdit QScrollBar:horizontal {
+        background: #161b21;
+        height: 12px;
+        margin: 2px;
+        border: 1px solid #2a323c;
+        border-radius: 6px;
+    }
+    QPlainTextEdit QScrollBar::handle:horizontal {
+        background: #5a6674;
+        min-width: 28px;
+        border-radius: 5px;
+    }
+    QPlainTextEdit QScrollBar::handle:horizontal:hover {
+        background: #697686;
+    }
+    QPlainTextEdit QScrollBar::add-line:horizontal,
+    QPlainTextEdit QScrollBar::sub-line:horizontal,
+    QPlainTextEdit QScrollBar::add-page:horizontal,
+    QPlainTextEdit QScrollBar::sub-page:horizontal {
+        background: transparent;
+        border: none;
+        width: 0;
+    }
     QTextBrowser {
         padding: 0;
     }

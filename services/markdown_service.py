@@ -98,7 +98,12 @@ class MarkdownService:
         lang = "ar" if safe_direction == "rtl" else "en"
         body_html = self._md.render(text).strip()
         if not body_html:
-            body_html = f"<p>{html.escape('Nothing to preview yet.')}</p>"
+          empty_message = (
+            "لا يوجد محتوى للمعاينة بعد."
+            if safe_direction == "rtl"
+            else "Nothing to preview yet."
+          )
+          body_html = f"<p>{html.escape(empty_message)}</p>"
 
         full_html = f"""
 <!DOCTYPE html>
@@ -116,7 +121,7 @@ class MarkdownService:
         color: #e6e1d8;
         direction: {safe_direction};
         text-align: {text_align};
-        font-family: "Noto Naskh Arabic", "IBM Plex Sans", "Segoe UI", sans-serif;
+        font-family: "Noto Kufi Arabic", "IBM Plex Sans", "Segoe UI", sans-serif;
         font-size: 16px;
         line-height: 1.8;
       }}
@@ -223,16 +228,30 @@ class MarkdownService:
         """Export Markdown text to a high-quality PDF with TOC and links."""
         safe_direction = "rtl" if direction == "rtl" else "ltr"
         highlighted_text = self._inject_pdf_syntax_highlight(text)
+        wrapped_text = self._wrap_pdf_direction_root(highlighted_text, safe_direction)
         pdf = MarkdownPdf(toc_level=6, optimize=True)
+        # markdown_pdf uses markdown-it with HTML disabled by default.
+        # Enable raw HTML so our RTL wrapper div and inline direction styles apply.
+        pdf.m_d.options["html"] = True
         pdf.meta["title"] = title
 
         section = Section(
-            highlighted_text,
+            wrapped_text,
             root=str(source_root),
             toc=True,
         )
         pdf.add_section(section, user_css=self._pdf_css(safe_direction))
         pdf.save(str(output_path))
+
+    def _wrap_pdf_direction_root(self, text: str, direction: str) -> str:
+        """Wrap exported markdown in a root element that locks direction for PDF."""
+        lang = "ar" if direction == "rtl" else "en"
+        align = "right" if direction == "rtl" else "left"
+        return (
+            f'<div class="katib-pdf-root" dir="{direction}" lang="{lang}" style="direction:{direction};text-align:{align};">\n'
+            f"{text}\n"
+            "</div>"
+        )
 
     def _inject_pdf_syntax_highlight(self, text: str) -> str:
         """Replace fenced code blocks with highlighted HTML for PDF export."""
@@ -255,20 +274,50 @@ class MarkdownService:
     def _pdf_css(self, direction: str) -> str:
         """Return PDF CSS tuned to match preview typography."""
         text_align = "right" if direction == "rtl" else "left"
+        quote_side = "right" if direction == "rtl" else "left"
+        opposite_quote_side = "left" if direction == "rtl" else "right"
+        list_padding_side = "right" if direction == "rtl" else "left"
+        list_padding_opposite = "left" if direction == "rtl" else "right"
         return f"""
-            body {{
-                direction: {direction};
-                text-align: {text_align};
-                font-family: 'Noto Naskh Arabic', 'IBM Plex Sans', 'Segoe UI', sans-serif;
+          @font-face {{
+            font-family: 'KatibArabic';
+            src:
+              local('Noto Kufi Arabic'),
+              local('NotoKufiArabic'),
+              url('file:///usr/share/fonts/truetype/noto/NotoKufiArabic-Regular.ttf') format('truetype'),
+              url('file:///usr/share/fonts/truetype/noto/NotoKufiArabic-VariableFont_wght.ttf') format('truetype');
+            font-style: normal;
+            font-weight: 400;
+          }}
+
+            html, body {{
+            direction: {direction} !important;
+            }}
+          body, .markdown-body, .katib-pdf-root {{
+            direction: {direction} !important;
+            text-align: {text_align} !important;
+            unicode-bidi: plaintext !important;
+            font-family: 'KatibArabic', 'Noto Kufi Arabic', 'IBM Plex Sans', 'Segoe UI', sans-serif !important;
                 font-size: 12pt;
                 line-height: 1.7;
             }}
+          .markdown-body *, .katib-pdf-root * {{
+            direction: inherit;
+            text-align: inherit;
+            font-family: 'KatibArabic', 'Noto Kufi Arabic', 'IBM Plex Sans', 'Segoe UI', sans-serif !important;
+          }}
             blockquote {{
-                border-left: 3px solid #6d7f93;
+                border-{quote_side}: 3px solid #6d7f93;
                 color: #4f5c6a;
                 font-style: italic;
-                margin-left: 1.5em;
-                padding-left: 0.9em;
+                margin-{quote_side}: 1.5em;
+                padding-{quote_side}: 0.9em;
+                margin-{opposite_quote_side}: 0;
+                padding-{opposite_quote_side}: 0;
+            }}
+            ul, ol {{
+                padding-{list_padding_side}: 1.6em;
+                padding-{list_padding_opposite}: 0;
             }}
             pre {{
                 background: #221f22;
@@ -277,11 +326,10 @@ class MarkdownService:
                 padding: 10px;
                 white-space: pre;
                 color: #f8f8f2;
+            text-align: left !important;
             }}
-            code {{
+          code, pre code {{
                 font-family: 'JetBrains Mono', 'Cascadia Mono', monospace;
-            }}
-            pre code {{
                 background: transparent;
                 padding: 0;
                 color: inherit;

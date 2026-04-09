@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QKeyEvent, QTextCursor
 from PySide6.QtWidgets import QInputDialog
 
@@ -30,11 +30,27 @@ class VimModeController:
         self._pending_command = ""
         self._count_prefix = ""
         self._yank_buffer = ""
+        self._visual_mode: str | None = None
+        self._visual_anchor: int | None = None
+        self._last_visual_selection: tuple[int, int, str] | None = None
+        self._block_insert_start: int | None = None
+        self._block_insert_targets: list[int] = []
+        self._insert_j_pending = False
+        self._insert_j_timer = QTimer(self._editor)
+        self._insert_j_timer.setSingleShot(True)
+        self._insert_j_timer.setInterval(260)
+        self._insert_j_timer.timeout.connect(self._flush_pending_insert_j)
 
     def set_enabled(self, enabled: bool) -> None:
         """Enable or disable Vim-style modal keybindings."""
         self._enabled = enabled
         self._pending_command = ""
+        self._visual_mode = None
+        self._visual_anchor = None
+        self._block_insert_start = None
+        self._block_insert_targets = []
+        self._insert_j_pending = False
+        self._insert_j_timer.stop()
         self._set_insert_mode(not enabled)
         self._apply_cursor_style()
         self._emit_mode_changed()
@@ -47,6 +63,12 @@ class VimModeController:
         """Return a label for the current Vim mode state."""
         if not self._enabled:
             return "OFF"
+        if self._visual_mode == "char":
+            return "VISUAL"
+        if self._visual_mode == "line":
+            return "V-LINE"
+        if self._visual_mode == "block":
+            return "V-BLOCK"
         return "INSERT" if self._insert_mode else "NORMAL"
 
     def _emit_mode_changed(self) -> None:
@@ -74,12 +96,29 @@ class VimModeController:
             return False
 
         if self._insert_mode:
+            if self._insert_j_pending:
+                if (
+                    event.text() == "j"
+                    and event.modifiers() == Qt.KeyboardModifier.NoModifier
+                ):
+                    self._insert_j_pending = False
+                    self._insert_j_timer.stop()
+                    self._leave_insert_mode()
+                    return True
+                self._flush_pending_insert_j()
+
             if event.key() == Qt.Key.Key_Escape:
-                self._pending_command = ""
-                self._count_prefix = ""
-                self._replace_mode = False
-                self._set_insert_mode(False)
+                self._leave_insert_mode()
                 return True
+
+            if (
+                event.text() == "j"
+                and event.modifiers() == Qt.KeyboardModifier.NoModifier
+            ):
+                self._insert_j_pending = True
+                self._insert_j_timer.start()
+                return True
+
             if (
                 self._replace_mode
                 and event.text()
@@ -96,7 +135,12 @@ class VimModeController:
         if event.key() == Qt.Key.Key_Escape:
             self._pending_command = ""
             self._count_prefix = ""
+            if self._visual_mode is not None:
+                self._leave_visual_mode(store_last=True)
             return True
+
+        if self._visual_mode is not None:
+            return self._handle_visual_keypress(event)
 
         cursor = self._editor.textCursor()
         key_text = event.text()
@@ -135,6 +179,9 @@ class VimModeController:
                 else:
                     cursor.movePosition(QTextCursor.MoveOperation.Start)
                     self._editor.setTextCursor(cursor)
+                return True
+            if key_text == "v":
+                self._reselect_last_visual()
                 return True
             if key_text == "J":
                 self._join_with_next_line(count, add_space=False)
@@ -288,6 +335,21 @@ class VimModeController:
         if key_text == "R":
             self._replace_mode = True
             self._set_insert_mode(True)
+            return True
+
+        if key_text == "v":
+            self._enter_visual_mode("char")
+            return True
+
+        if key_text == "V":
+            self._enter_visual_mode("line")
+            return True
+
+        if (
+            event.key() == Qt.Key.Key_V
+            and event.modifiers() == Qt.KeyboardModifier.ControlModifier
+        ):
+            self._enter_visual_mode("block")
             return True
 
         if key_text == "h":
@@ -711,6 +773,395 @@ class VimModeController:
         if not ok or not pattern:
             return
         self._editor.find(pattern)
+
+    def _leave_insert_mode(self) -> None:
+        """Return from insert mode to normal mode with Vim-like cursor placement."""
+        self._insert_j_pending = False
+        self._insert_j_timer.stop()
+        self._apply_pending_block_insert()
+        self._pending_command = ""
+        self._count_prefix = ""
+        self._replace_mode = False
+
+        cursor = self._editor.textCursor()
+        if cursor.position() > 0:
+            cursor.movePosition(QTextCursor.MoveOperation.Left)
+            self._editor.setTextCursor(cursor)
+
+        self._set_insert_mode(False)
+
+    def _flush_pending_insert_j(self) -> None:
+        """Insert delayed 'j' when jj timeout expires or another key is pressed."""
+        if not self._insert_j_pending:
+            return
+        self._insert_j_pending = False
+        self._insert_j_timer.stop()
+        cursor = self._editor.textCursor()
+        cursor.insertText("j")
+        self._editor.setTextCursor(cursor)
+
+    def _enter_visual_mode(self, mode: str) -> None:
+        """Enter character, line, or block visual mode."""
+        cursor = self._editor.textCursor()
+        self._visual_mode = mode
+        self._visual_anchor = cursor.position()
+        self._pending_command = ""
+        self._count_prefix = ""
+
+        if mode == "line":
+            cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+            self._visual_anchor = cursor.position()
+            cursor.movePosition(
+                QTextCursor.MoveOperation.EndOfBlock,
+                QTextCursor.MoveMode.KeepAnchor,
+            )
+            self._editor.setTextCursor(cursor)
+        self._emit_mode_changed()
+
+    def _leave_visual_mode(self, *, store_last: bool) -> None:
+        """Exit visual mode and optionally keep range for gv."""
+        cursor = self._editor.textCursor()
+        if store_last and cursor.hasSelection() and self._visual_mode is not None:
+            self._last_visual_selection = (
+                cursor.selectionStart(),
+                cursor.selectionEnd(),
+                self._visual_mode,
+            )
+        self._visual_mode = None
+        self._visual_anchor = None
+        self._emit_mode_changed()
+
+    def _reselect_last_visual(self) -> None:
+        """Reselect last visual area (gv)."""
+        if self._last_visual_selection is None:
+            return
+        start, end, mode = self._last_visual_selection
+        cursor = self._editor.textCursor()
+        cursor.setPosition(start)
+        cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+        self._editor.setTextCursor(cursor)
+        self._visual_mode = mode
+        self._visual_anchor = start
+        self._emit_mode_changed()
+
+    def _handle_visual_keypress(self, event: QKeyEvent) -> bool:
+        """Handle keybindings while in visual mode."""
+        key_text = event.text()
+        cursor = self._editor.textCursor()
+
+        if event.key() == Qt.Key.Key_Escape:
+            self._leave_visual_mode(store_last=True)
+            return True
+
+        if key_text == "o":
+            self._swap_visual_ends()
+            return True
+
+        if key_text == "v" and self._visual_mode == "char":
+            self._leave_visual_mode(store_last=True)
+            return True
+
+        if key_text == "V":
+            self._visual_mode = "line"
+            self._select_visual_lines()
+            self._emit_mode_changed()
+            return True
+
+        if (
+            event.key() == Qt.Key.Key_V
+            and event.modifiers() == Qt.KeyboardModifier.ControlModifier
+        ):
+            self._visual_mode = "block"
+            self._emit_mode_changed()
+            return True
+
+        if key_text == "d":
+            self._yank_buffer = cursor.selectedText().replace("\u2029", "\n")
+            cursor.removeSelectedText()
+            self._editor.setTextCursor(cursor)
+            self._leave_visual_mode(store_last=False)
+            return True
+
+        if key_text == "y":
+            self._yank_buffer = cursor.selectedText().replace("\u2029", "\n")
+            self._leave_visual_mode(store_last=True)
+            return True
+
+        if key_text == "c":
+            self._yank_buffer = cursor.selectedText().replace("\u2029", "\n")
+            cursor.removeSelectedText()
+            self._editor.setTextCursor(cursor)
+            self._leave_visual_mode(store_last=False)
+            self._set_insert_mode(True)
+            return True
+
+        if key_text == "U":
+            self._replace_selected_case("upper")
+            return True
+
+        if key_text == "u":
+            self._replace_selected_case("lower")
+            return True
+
+        if key_text == ">":
+            self._indent_selected_lines(right=True)
+            return True
+
+        if key_text == "<":
+            self._indent_selected_lines(right=False)
+            return True
+
+        if self._visual_mode == "block" and key_text in {"I", "A"}:
+            self._start_visual_block_insert(append=(key_text == "A"))
+            return True
+
+        count = self._consume_count() if self._count_prefix else 1
+        if key_text.isdigit():
+            if key_text == "0" and not self._count_prefix:
+                self._visual_move("0", 1)
+                return True
+            self._count_prefix += key_text
+            return True
+
+        if key_text in {"h", "j", "k", "l", "w", "b", "e", "$", "^", "0", "G"}:
+            self._visual_move(key_text, count)
+            return True
+
+        return True
+
+    def _visual_move(self, key_text: str, count: int) -> None:
+        """Move the cursor while keeping visual selection active."""
+        cursor = self._editor.textCursor()
+        operation_done = True
+
+        if key_text == "h":
+            cursor.movePosition(
+                QTextCursor.MoveOperation.Left,
+                QTextCursor.MoveMode.KeepAnchor,
+                count,
+            )
+        elif key_text == "j":
+            for _ in range(count):
+                cursor.movePosition(
+                    QTextCursor.MoveOperation.Down,
+                    QTextCursor.MoveMode.KeepAnchor,
+                )
+        elif key_text == "k":
+            for _ in range(count):
+                cursor.movePosition(
+                    QTextCursor.MoveOperation.Up,
+                    QTextCursor.MoveMode.KeepAnchor,
+                )
+        elif key_text == "l":
+            cursor.movePosition(
+                QTextCursor.MoveOperation.Right,
+                QTextCursor.MoveMode.KeepAnchor,
+                count,
+            )
+        elif key_text == "w":
+            for _ in range(count):
+                cursor.movePosition(
+                    QTextCursor.MoveOperation.NextWord,
+                    QTextCursor.MoveMode.KeepAnchor,
+                )
+        elif key_text == "b":
+            for _ in range(count):
+                cursor.movePosition(
+                    QTextCursor.MoveOperation.PreviousWord,
+                    QTextCursor.MoveMode.KeepAnchor,
+                )
+        elif key_text == "e":
+            for _ in range(count):
+                cursor.movePosition(
+                    QTextCursor.MoveOperation.EndOfWord,
+                    QTextCursor.MoveMode.KeepAnchor,
+                )
+        elif key_text == "$":
+            cursor.movePosition(
+                QTextCursor.MoveOperation.EndOfBlock,
+                QTextCursor.MoveMode.KeepAnchor,
+            )
+        elif key_text == "^":
+            start = cursor.anchor()
+            cursor.setPosition(cursor.block().position())
+            line_text = cursor.block().text()
+            non_blank = len(line_text) - len(line_text.lstrip())
+            cursor.setPosition(cursor.block().position() + non_blank)
+            cursor.setPosition(start, QTextCursor.MoveMode.KeepAnchor)
+            self._swap_visual_ends()
+            return
+        elif key_text == "0":
+            cursor.movePosition(
+                QTextCursor.MoveOperation.StartOfBlock,
+                QTextCursor.MoveMode.KeepAnchor,
+            )
+        elif key_text == "G":
+            cursor.movePosition(
+                QTextCursor.MoveOperation.End,
+                QTextCursor.MoveMode.KeepAnchor,
+            )
+        else:
+            operation_done = False
+
+        if not operation_done:
+            return
+
+        self._editor.setTextCursor(cursor)
+        if self._visual_mode == "line":
+            self._select_visual_lines()
+
+    def _select_visual_lines(self) -> None:
+        """Expand current visual selection to cover complete lines."""
+        cursor = self._editor.textCursor()
+        start = min(cursor.anchor(), cursor.position())
+        end = max(cursor.anchor(), cursor.position())
+
+        probe = self._editor.textCursor()
+        probe.setPosition(start)
+        probe.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+        start_line = probe.position()
+
+        probe.setPosition(end)
+        probe.movePosition(QTextCursor.MoveOperation.EndOfBlock)
+        end_line = probe.position()
+
+        new_cursor = self._editor.textCursor()
+        new_cursor.setPosition(start_line)
+        new_cursor.setPosition(end_line, QTextCursor.MoveMode.KeepAnchor)
+        self._editor.setTextCursor(new_cursor)
+
+    def _swap_visual_ends(self) -> None:
+        """Swap active and anchor ends in visual selection (o)."""
+        cursor = self._editor.textCursor()
+        if not cursor.hasSelection():
+            return
+        anchor = cursor.anchor()
+        pos = cursor.position()
+        cursor.setPosition(pos)
+        cursor.setPosition(anchor, QTextCursor.MoveMode.KeepAnchor)
+        self._editor.setTextCursor(cursor)
+
+    def _replace_selected_case(self, case_mode: str) -> None:
+        """Apply case transform to the current visual selection."""
+        cursor = self._editor.textCursor()
+        text = cursor.selectedText()
+        if not text:
+            return
+        replacement = text.upper() if case_mode == "upper" else text.lower()
+        cursor.insertText(replacement)
+        self._editor.setTextCursor(cursor)
+        self._leave_visual_mode(store_last=False)
+
+    def _indent_selected_lines(self, *, right: bool) -> None:
+        """Indent or outdent all lines touched by visual selection."""
+        cursor = self._editor.textCursor()
+        start = min(cursor.selectionStart(), cursor.selectionEnd())
+        end = max(cursor.selectionStart(), cursor.selectionEnd())
+
+        start_block = self._editor.document().findBlock(start)
+        end_block = self._editor.document().findBlock(max(start, end - 1))
+        unit = self._editor._indent_unit("")
+
+        block = start_block
+        while block.isValid() and block.blockNumber() <= end_block.blockNumber():
+            line_cursor = QTextCursor(block)
+            line_cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+            if right:
+                line_cursor.insertText(unit)
+            else:
+                line_text = block.text()
+                remove = (
+                    len(unit)
+                    if line_text.startswith(unit)
+                    else min(len(line_text) - len(line_text.lstrip()), len(unit))
+                )
+                if remove > 0:
+                    line_cursor.movePosition(
+                        QTextCursor.MoveOperation.Right,
+                        QTextCursor.MoveMode.KeepAnchor,
+                        remove,
+                    )
+                    line_cursor.removeSelectedText()
+            block = block.next()
+
+    def _visual_block_bounds(self) -> tuple[int, int, int, int] | None:
+        """Return start/end lines and columns for block visual selection."""
+        cursor = self._editor.textCursor()
+        if not cursor.hasSelection():
+            return None
+
+        a = self._editor.document().findBlock(cursor.anchor())
+        b = self._editor.document().findBlock(cursor.position())
+        a_col = cursor.anchor() - a.position()
+        b_col = cursor.position() - b.position()
+
+        line_start = min(a.blockNumber(), b.blockNumber())
+        line_end = max(a.blockNumber(), b.blockNumber())
+        col_start = min(a_col, b_col)
+        col_end = max(a_col, b_col)
+        return line_start, line_end, col_start, col_end
+
+    def _start_visual_block_insert(self, *, append: bool) -> None:
+        """Start block insert/append from visual block selection (I/A)."""
+        bounds = self._visual_block_bounds()
+        if bounds is None:
+            return
+        line_start, line_end, col_start, col_end = bounds
+        target_col = col_end + 1 if append else col_start
+
+        points: list[int] = []
+        for line in range(line_start, line_end + 1):
+            block = self._editor.document().findBlockByNumber(line)
+            if not block.isValid():
+                continue
+            points.append(block.position() + min(len(block.text()), target_col))
+
+        if not points:
+            return
+
+        cursor = self._editor.textCursor()
+        cursor.setPosition(points[0])
+        self._editor.setTextCursor(cursor)
+        self._leave_visual_mode(store_last=True)
+        self._block_insert_start = points[0]
+        self._block_insert_targets = points[1:]
+        self._replace_mode = False
+        self._set_insert_mode(True)
+
+    def _apply_pending_block_insert(self) -> None:
+        """Replicate inserted text to remaining lines after block I/A."""
+        if self._block_insert_start is None or not self._block_insert_targets:
+            self._block_insert_start = None
+            self._block_insert_targets = []
+            return
+
+        cursor = self._editor.textCursor()
+        end_pos = cursor.position()
+        if end_pos < self._block_insert_start:
+            self._block_insert_start = None
+            self._block_insert_targets = []
+            return
+
+        doc_text = self._editor.toPlainText()
+        inserted = doc_text[self._block_insert_start : end_pos]
+        if not inserted:
+            self._block_insert_start = None
+            self._block_insert_targets = []
+            return
+
+        delta = len(inserted)
+        extra_shift = 0
+        for point in sorted(self._block_insert_targets):
+            adjusted = (
+                point + (delta if point > self._block_insert_start else 0) + extra_shift
+            )
+            insert_cursor = self._editor.textCursor()
+            insert_cursor.setPosition(adjusted)
+            insert_cursor.insertText(inserted)
+            extra_shift += delta
+
+        self._block_insert_start = None
+        self._block_insert_targets = []
 
     def _paste(self, *, after: bool) -> None:
         """Paste yanked text before or after the current cursor position."""
