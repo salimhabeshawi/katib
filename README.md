@@ -91,12 +91,14 @@ Arabic UI (RTL):
 1. Clone the repository
 
 For HTTPS Users:
+
 ```bash
 git clone https://github.com/salimhabeshawi/katib.git
 cd katib
 ```
 
 For SSH Users:
+
 ```bash
 git git@github.com:salimhabeshawi/katib.git
 cd katib
