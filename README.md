@@ -13,6 +13,21 @@ Katib is a local-first writing environment for Markdown documents. It combines a
 
 It is built for writers who switch between English and Arabic, and need direction-aware editing and rendering with minimal friction.
 
+## Screenshots
+
+Place your screenshots in `docs/screenshots/` using these names:
+
+- `docs/screenshots/english.png`
+- `docs/screenshots/arabic.png`
+
+English UI:
+
+![Katib English UI](docs/screenshots/english.png)
+
+Arabic UI (RTL):
+
+![Katib Arabic UI RTL](docs/screenshots/arabic.png)
+
 ## Key Highlights
 
 - Calm, distraction-free writing column
@@ -116,6 +131,10 @@ katib/
 │   ├── __init__.py
 │   ├── models.py
 │   └── project_manager.py
+├── docs/
+│   └── screenshots/
+│       ├── arabic.png
+│       └── english.png
 ├── services/
 │   ├── __init__.py
 │   ├── markdown_service.py
