@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem
 
 
@@ -12,6 +12,7 @@ class FileTree(QTreeWidget):
     """Display Markdown files in a project tree."""
 
     file_open_requested = Signal(Path)
+    file_context_requested = Signal(Path, QPoint)
 
     def __init__(self, parent: object | None = None) -> None:
         """Initialize the file tree."""
@@ -21,10 +22,12 @@ class FileTree(QTreeWidget):
         self.setIndentation(0)
         self.setRootIsDecorated(False)
         self.setUniformRowHeights(True)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.itemActivated.connect(
             lambda item, _column: self._emit_file_requested(item)
         )
         self.itemClicked.connect(lambda item, _column: self._emit_file_requested(item))
+        self.customContextMenuRequested.connect(self._emit_context_requested)
 
     def populate(self, project_root: Path, files: list[Path]) -> None:
         """Populate the tree from Markdown files."""
@@ -54,3 +57,20 @@ class FileTree(QTreeWidget):
         value = item.data(0, Qt.ItemDataRole.UserRole)
         if value and Path(value).suffix.lower() == ".md":
             self.file_open_requested.emit(Path(value))
+
+    def _emit_context_requested(self, pos: QPoint) -> None:
+        """Emit a signal when a file item receives a context-menu click."""
+        item = self.itemAt(pos)
+        if item is None:
+            return
+
+        value = item.data(0, Qt.ItemDataRole.UserRole)
+        if not value:
+            return
+
+        file_path = Path(value)
+        if file_path.suffix.lower() != ".md":
+            return
+
+        self.setCurrentItem(item)
+        self.file_context_requested.emit(file_path, self.viewport().mapToGlobal(pos))

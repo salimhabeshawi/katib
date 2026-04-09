@@ -49,18 +49,6 @@ def build_stylesheet() -> str:
         background: #15191e;
         border-radius: 16px;
     }
-    QPushButton#directionToggle {
-        background: #222932;
-        border: 1px solid #303a46;
-        border-radius: 8px;
-        color: #e7e1d6;
-        font-weight: 600;
-        min-width: 56px;
-        padding: 6px 10px;
-    }
-    QPushButton#directionToggle:hover {
-        background: #2a3440;
-    }
     QSplitter::handle {
         background: #1b2026;
         width: 1px;

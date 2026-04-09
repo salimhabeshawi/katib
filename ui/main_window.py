@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QSignalBlocker, Qt, QTimer
+from PySide6.QtCore import QPoint, QSignalBlocker, Qt, QTimer
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
     QFileDialog,
     QInputDialog,
     QHBoxLayout,
     QMainWindow,
+    QMenu,
     QMessageBox,
-    QPushButton,
     QSizePolicy,
     QSplitter,
     QStackedWidget,
@@ -56,6 +56,7 @@ class MainWindow(QMainWindow):
         self._file_tree = FileTree()
         self._file_tree.setMinimumWidth(220)
         self._file_tree.file_open_requested.connect(self.open_file)
+        self._file_tree.file_context_requested.connect(self._show_file_context_menu)
 
         self._editor = MarkdownEditor()
         self._editor.textChanged.connect(self._on_editor_text_changed)
@@ -68,24 +69,10 @@ class MainWindow(QMainWindow):
         self._stack.addWidget(self._editor_page)
         self._stack.addWidget(self._preview_page)
 
-        self._direction_button = QPushButton()
-        self._direction_button.setObjectName("directionToggle")
-        self._direction_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._direction_button.clicked.connect(self.toggle_direction)
-
         self._content_panel = QWidget()
         self._content_layout = QVBoxLayout(self._content_panel)
         self._content_layout.setContentsMargins(0, 0, 0, 0)
         self._content_layout.setSpacing(0)
-
-        self._top_bar = QWidget()
-        self._top_bar_layout = QHBoxLayout(self._top_bar)
-        self._top_bar_layout.setContentsMargins(20, 14, 20, 0)
-        self._top_bar_layout.setSpacing(0)
-        self._top_bar_layout.addStretch(1)
-        self._top_bar_layout.addWidget(self._direction_button)
-
-        self._content_layout.addWidget(self._top_bar)
         self._content_layout.addWidget(self._stack, 1)
 
         self._splitter = QSplitter()
@@ -229,7 +216,6 @@ class MainWindow(QMainWindow):
         self._file_tree.select_file(file_path)
         self._update_preview()
         self._update_status()
-        self._update_direction_button()
         self._persist_state()
 
     def toggle_preview(self) -> None:
@@ -266,7 +252,7 @@ class MainWindow(QMainWindow):
             self._apply_direction(self._document_direction(self._current_file))
             self._update_preview()
         else:
-            self._update_direction_button()
+            self._update_status()
         self._persist_state()
 
     def toggle_direction(self) -> None:
@@ -323,6 +309,28 @@ class MainWindow(QMainWindow):
 
         self._update_status(f"Exported {output_path.name}")
 
+    def _show_file_context_menu(self, file_path: Path, global_pos: QPoint) -> None:
+        """Show context menu with file actions for a tree item."""
+        menu = QMenu(self)
+        open_action = menu.addAction("Open")
+        rename_action = menu.addAction("Rename")
+        delete_action = menu.addAction("Delete")
+
+        chosen = menu.exec(global_pos)
+        if chosen is None:
+            return
+
+        if chosen is open_action:
+            self.open_file(file_path)
+            return
+
+        # Reuse existing rename/delete flows by focusing the selected file first.
+        self.open_file(file_path)
+        if chosen is rename_action:
+            self.rename_current_file()
+        elif chosen is delete_action:
+            self.delete_current_file()
+
     def _create_actions(self) -> None:
         """Create actions, menus, and shortcuts."""
         open_project_action = QAction("Open Project", self)
@@ -357,6 +365,10 @@ class MainWindow(QMainWindow):
         sidebar_action.setShortcut(QKeySequence("Ctrl+B"))
         sidebar_action.triggered.connect(self.toggle_sidebar)
 
+        toggle_direction_action = QAction("Toggle RTL/LTR", self)
+        toggle_direction_action.setShortcut(QKeySequence("Ctrl+Alt+D"))
+        toggle_direction_action.triggered.connect(self.toggle_direction)
+
         file_menu = self.menuBar().addMenu("File")
         file_menu.addAction(new_project_action)
         file_menu.addAction(open_project_action)
@@ -370,6 +382,8 @@ class MainWindow(QMainWindow):
         view_menu = self.menuBar().addMenu("View")
         view_menu.addAction(preview_action)
         view_menu.addAction(sidebar_action)
+        view_menu.addSeparator()
+        view_menu.addAction(toggle_direction_action)
 
         for action in [
             open_project_action,
@@ -380,6 +394,7 @@ class MainWindow(QMainWindow):
             export_pdf_action,
             preview_action,
             sidebar_action,
+            toggle_direction_action,
         ]:
             self.addAction(action)
 
@@ -389,7 +404,6 @@ class MainWindow(QMainWindow):
         self._stack.setCurrentWidget(
             self._preview_page if self._state.preview_visible else self._editor_page
         )
-        self._update_direction_button()
 
         if not self._state.last_project:
             return
@@ -486,7 +500,6 @@ class MainWindow(QMainWindow):
         """Apply direction to editor and preview widgets."""
         self._editor.set_direction(direction)
         self._update_preview()
-        self._update_direction_button()
         self._update_status()
 
     def _document_direction(self, file_path: Path | None) -> str:
@@ -542,16 +555,6 @@ class MainWindow(QMainWindow):
     def _show_error(self, message: str) -> None:
         """Display an error dialog."""
         QMessageBox.critical(self, "Katib", message)
-
-    def _update_direction_button(self) -> None:
-        """Refresh the direction toggle label."""
-        direction = (
-            self._document_direction(self._current_file)
-            if self._project and self._current_file
-            else self._state.global_direction
-        )
-        self._direction_button.setText(direction.upper())
-        self._direction_button.setToolTip("Toggle writing direction")
 
     def _normalize_path(self, path: Path) -> Path:
         """Normalize a path without requiring it to exist."""
