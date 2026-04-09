@@ -60,6 +60,9 @@ class MainWindow(QMainWindow):
 
         self._editor = MarkdownEditor()
         self._editor.textChanged.connect(self._on_editor_text_changed)
+        self._editor.vim_mode_changed.connect(
+            lambda _enabled, _mode: self._update_status()
+        )
         self._editor_page = self._build_centered_page(self._editor)
 
         self._preview = PreviewBrowser()
@@ -369,6 +372,11 @@ class MainWindow(QMainWindow):
         toggle_direction_action.setShortcut(QKeySequence("Ctrl+Alt+D"))
         toggle_direction_action.triggered.connect(self.toggle_direction)
 
+        toggle_vim_mode_action = QAction("Toggle Vim Mode", self)
+        toggle_vim_mode_action.setShortcut(QKeySequence("Ctrl+Alt+V"))
+        toggle_vim_mode_action.setCheckable(True)
+        toggle_vim_mode_action.toggled.connect(self._editor.set_vim_mode)
+
         file_menu = self.menuBar().addMenu("File")
         file_menu.addAction(new_project_action)
         file_menu.addAction(open_project_action)
@@ -384,6 +392,7 @@ class MainWindow(QMainWindow):
         view_menu.addAction(sidebar_action)
         view_menu.addSeparator()
         view_menu.addAction(toggle_direction_action)
+        view_menu.addAction(toggle_vim_mode_action)
 
         for action in [
             open_project_action,
@@ -395,6 +404,7 @@ class MainWindow(QMainWindow):
             preview_action,
             sidebar_action,
             toggle_direction_action,
+            toggle_vim_mode_action,
         ]:
             self.addAction(action)
 
@@ -490,6 +500,8 @@ class MainWindow(QMainWindow):
         mode = (
             "Preview" if self._stack.currentWidget() is self._preview_page else "Edit"
         )
+        if self._stack.currentWidget() is self._editor_page:
+            mode = f"{mode}  |  Vim {self._editor.vim_mode_label()}"
         direction = self._document_direction(self._current_file).upper()
         text = f"{mode}  |  {direction}  |  {self._current_file.name}"
         if prefix:

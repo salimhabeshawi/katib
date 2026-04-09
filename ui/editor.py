@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from PySide6.QtCore import QRect, QSize, Qt
+from PySide6.QtCore import QRect, QSize, Signal, Qt
 from PySide6.QtGui import (
     QColor,
     QKeyEvent,
@@ -18,6 +18,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QFrame, QPlainTextEdit, QTextEdit, QWidget
 
 from ui.markdown_highlighter import MarkdownHighlighter
+from ui.vim_mode import VimModeController
 
 
 class _LineNumberArea(QWidget):
@@ -40,6 +41,8 @@ class _LineNumberArea(QWidget):
 class MarkdownEditor(QPlainTextEdit):
     """Plain text editor tuned for long-form Markdown writing."""
 
+    vim_mode_changed = Signal(bool, str)
+
     _PAIRABLE_MARKERS = {"*", "_", "~", "`"}
     _OPENING_PAIRS = {"(": ")", "[": "]", "{": "}"}
     _SYMMETRIC_PAIRS = {'"': '"', "'": "'"}
@@ -50,6 +53,7 @@ class MarkdownEditor(QPlainTextEdit):
         """Initialize the writing editor."""
         super().__init__(parent)
         self._line_number_area = _LineNumberArea(self)
+        self._vim = VimModeController(self, self._emit_vim_mode_changed)
 
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.setTabStopDistance(32)
@@ -190,6 +194,9 @@ class MarkdownEditor(QPlainTextEdit):
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         """Handle editor key presses with Markdown-aware indentation."""
+        if self._vim.handle_keypress(event):
+            return
+
         if self._handle_symbol_autoclose(event):
             return
 
@@ -217,6 +224,22 @@ class MarkdownEditor(QPlainTextEdit):
             return
 
         super().keyPressEvent(event)
+
+    def set_vim_mode(self, enabled: bool) -> None:
+        """Enable or disable Vim-style modal keybindings."""
+        self._vim.set_enabled(enabled)
+
+    def vim_mode_enabled(self) -> bool:
+        """Return whether Vim mode is enabled."""
+        return self._vim.is_enabled()
+
+    def vim_mode_label(self) -> str:
+        """Return a label for the current Vim mode state."""
+        return self._vim.label()
+
+    def _emit_vim_mode_changed(self, enabled: bool, label: str) -> None:
+        """Bridge Vim controller mode changes to Qt signal emissions."""
+        self.vim_mode_changed.emit(enabled, label)
 
     def _handle_symbol_autoclose(self, event: QKeyEvent) -> bool:
         """Auto-close common symbol pairs and step through existing closers."""
