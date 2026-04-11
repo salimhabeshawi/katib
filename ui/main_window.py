@@ -326,6 +326,7 @@ class MainWindow(QMainWindow):
         """Show context menu with file actions for a tree item."""
         menu = QMenu(self)
         open_action = menu.addAction("Open")
+        export_action = menu.addAction("Export as PDF")
         rename_action = menu.addAction("Rename")
         delete_action = menu.addAction("Delete")
 
@@ -335,6 +336,11 @@ class MainWindow(QMainWindow):
 
         if chosen is open_action:
             self.open_file(file_path)
+            return
+
+        if chosen is export_action:
+            self.open_file(file_path)
+            self.export_pdf()
             return
 
         # Reuse existing rename/delete flows by focusing the selected file first.

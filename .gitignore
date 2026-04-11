@@ -46,3 +46,8 @@ Thumbs.db
 
 # Local output files
 *.pdf
+
+# Windows packaging artifacts
+installer/output/
+*.exe
+*.msi
