@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QSplitter,
     QStackedWidget,
     QStatusBar,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -59,6 +60,37 @@ class MainWindow(QMainWindow):
         self._file_tree.file_open_requested.connect(self.open_file)
         self._file_tree.file_context_requested.connect(self._show_file_context_menu)
 
+        self._sidebar_panel = QWidget()
+        self._sidebar_layout = QVBoxLayout(self._sidebar_panel)
+        self._sidebar_layout.setContentsMargins(8, 8, 8, 8)
+        self._sidebar_layout.setSpacing(6)
+
+        self._sidebar_header = QWidget()
+        self._sidebar_header_layout = QHBoxLayout(self._sidebar_header)
+        self._sidebar_header_layout.setContentsMargins(4, 0, 4, 0)
+        self._sidebar_header_layout.setSpacing(6)
+
+        self._sidebar_title = QLabel("Project")
+        self._sidebar_title.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
+
+        self._sidebar_toggle_button = QToolButton()
+        self._sidebar_toggle_button.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonIconOnly
+        )
+        self._sidebar_toggle_button.setArrowType(Qt.ArrowType.LeftArrow)
+        self._sidebar_toggle_button.setAutoRaise(True)
+        self._sidebar_toggle_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._sidebar_toggle_button.setToolTip("Hide file tree")
+        self._sidebar_toggle_button.clicked.connect(self.toggle_sidebar)
+
+        self._sidebar_header_layout.addWidget(self._sidebar_title, 1)
+        self._sidebar_header_layout.addWidget(self._sidebar_toggle_button)
+        self._sidebar_layout.addWidget(self._sidebar_header)
+        self._sidebar_layout.addWidget(self._file_tree, 1)
+
         self._editor = MarkdownEditor()
         self._editor.textChanged.connect(self._on_editor_text_changed)
         self._editor.vim_mode_changed.connect(
@@ -80,7 +112,7 @@ class MainWindow(QMainWindow):
         self._content_layout.addWidget(self._stack, 1)
 
         self._splitter = QSplitter()
-        self._splitter.addWidget(self._file_tree)
+        self._splitter.addWidget(self._sidebar_panel)
         self._splitter.addWidget(self._content_panel)
         self._splitter.setStretchFactor(0, 0)
         self._splitter.setStretchFactor(1, 1)
@@ -244,9 +276,18 @@ class MainWindow(QMainWindow):
 
     def toggle_sidebar(self) -> None:
         """Toggle the sidebar visibility."""
-        is_hidden = self._file_tree.isHidden()
-        self._file_tree.setVisible(is_hidden)
-        self._state.sidebar_visible = is_hidden
+        self._set_sidebar_visible(self._sidebar_panel.isHidden())
+
+    def _set_sidebar_visible(self, visible: bool) -> None:
+        """Set sidebar visibility and synchronize UI state."""
+        self._sidebar_panel.setVisible(visible)
+        self._state.sidebar_visible = visible
+        self._sidebar_toggle_button.setArrowType(
+            Qt.ArrowType.LeftArrow if visible else Qt.ArrowType.RightArrow
+        )
+        self._sidebar_toggle_button.setToolTip(
+            "Hide file tree" if visible else "Show file tree"
+        )
 
     def set_document_direction(self, direction: str) -> None:
         """Set the text direction for the current document."""
@@ -426,7 +467,7 @@ class MainWindow(QMainWindow):
 
     def _restore_session(self) -> None:
         """Restore the last project and file if they still exist."""
-        self._file_tree.setVisible(self._state.sidebar_visible)
+        self._set_sidebar_visible(self._state.sidebar_visible)
         self._stack.setCurrentWidget(
             self._preview_page if self._state.preview_visible else self._editor_page
         )
@@ -443,6 +484,7 @@ class MainWindow(QMainWindow):
         except OSError:
             self._project = None
             self._current_file = None
+            self._sidebar_title.setText("Project")
             self._file_tree.clear()
             self._editor.clear()
             self._preview.clear()
@@ -452,6 +494,7 @@ class MainWindow(QMainWindow):
         """Load a project into the UI."""
         normalized_root = self._normalize_path(project_root)
         self._project = ProjectContext(root=normalized_root)
+        self._sidebar_title.setText(normalized_root.name)
         self._refresh_tree()
         self.setWindowTitle(f"Katib  |  {normalized_root.name}")
         self.statusBar().showMessage(f"Project: {normalized_root}")
