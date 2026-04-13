@@ -7,6 +7,7 @@ import re
 from PySide6.QtCore import QRect, QSize, Signal, Qt
 from PySide6.QtGui import (
     QColor,
+    QFont,
     QKeyEvent,
     QPainter,
     QTextBlock,
@@ -63,7 +64,9 @@ class MarkdownEditor(QPlainTextEdit):
         self.setCenterOnScroll(True)
 
         font = self.font()
-        font.setFamilies(["JetBrains Mono", "Cascadia Mono", "Noto Kufi Arabic"])
+        font.setFamilies(["JetBrains Mono", "Noto Kufi Arabic"])
+        font.setStyleHint(QFont.StyleHint.Monospace)
+        font.setFixedPitch(True)
         font.setPointSize(12)
         self.setFont(font)
         self._highlighter = MarkdownHighlighter(self.document())

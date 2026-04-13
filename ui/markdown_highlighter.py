@@ -338,7 +338,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         if weight is not None:
             text_format.setFontWeight(weight)
         if family:
-            text_format.setFontFamilies([family, "Cascadia Mono"])
+            text_format.setFontFamilies(["JetBrains Mono", "Noto Kufi Arabic"])
         if point_delta:
             text_format.setFontPointSize(12 + point_delta)
         return text_format
