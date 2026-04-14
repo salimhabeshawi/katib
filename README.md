@@ -81,42 +81,108 @@ Arabic UI (RTL):
 
 ## Installation
 
+## Linux AppImage (Recommended for Most Users)
+
+Use this if you just want to install and run Katib.
+
+### Step 1: Download
+
+1. Open the latest GitHub Release.
+2. Download `Katib-x86_64.AppImage`.
+
+### Step 2: Move It to an Apps Folder
+
+```bash
+mkdir -p "$HOME/Applications/Katib"
+mv "$HOME/Downloads/Katib-x86_64.AppImage" "$HOME/Applications/Katib/"
+chmod +x "$HOME/Applications/Katib/Katib-x86_64.AppImage"
+```
+
+### Step 3: Run It Once
+
+```bash
+"$HOME/Applications/Katib/Katib-x86_64.AppImage"
+```
+
+### Step 4: Create a Desktop Shortcut (Debian/Ubuntu/Linux Mint/Pop!_OS)
+
+```bash
+mkdir -p "$HOME/.local/share/applications"
+cat > "$HOME/.local/share/applications/katib-appimage.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Katib
+Comment=Markdown writing app
+Exec=$HOME/Applications/Katib/Katib-x86_64.AppImage
+Icon=accessories-text-editor
+Terminal=false
+Categories=Office;TextEditor;Utility;
+StartupNotify=true
+EOF
+update-desktop-database "$HOME/.local/share/applications" || true
+```
+
+### Step 5: Create a Desktop Shortcut (Arch/Manjaro/EndeavourOS)
+
+```bash
+mkdir -p "$HOME/.local/share/applications"
+cat > "$HOME/.local/share/applications/katib-appimage.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Katib
+Comment=Markdown writing app
+Exec=$HOME/Applications/Katib/Katib-x86_64.AppImage
+Icon=accessories-text-editor
+Terminal=false
+Categories=Office;TextEditor;Utility;
+StartupNotify=true
+EOF
+update-desktop-database "$HOME/.local/share/applications" || true
+```
+
+After this, search for `Katib` in your app launcher and pin it to favorites/dock.
+
+### Optional: Use a Custom Icon in the Launcher
+
+If you downloaded `katib.png`, use this instead:
+
+```bash
+mkdir -p "$HOME/.local/share/icons"
+cp "$HOME/Downloads/katib.png" "$HOME/.local/share/icons/katib.png"
+sed -i 's|^Icon=.*|Icon='$HOME'/.local/share/icons/katib.png|' "$HOME/.local/share/applications/katib-appimage.desktop"
+```
+
+## Run From Source (For Developers)
+
 ### Prerequisites
 
 - Python 3.11+
-- `uv` package manager
+- `uv`
 
 ### Quick Start
 
-1. Clone the repository
-
-For HTTPS Users:
+For HTTPS:
 
 ```bash
 git clone https://github.com/salimhabeshawi/katib.git
 cd katib
 ```
 
-For SSH Users:
+For SSH:
 
 ```bash
-git git@github.com:salimhabeshawi/katib.git
+git clone git@github.com:salimhabeshawi/katib.git
 cd katib
 ```
 
-2. Create a virtual environment
+Create environment and install dependencies:
 
 ```bash
 uv venv
-```
-
-3. Install dependencies
-
-```bash
 uv sync
 ```
 
-4. Run the app
+Run:
 
 ```bash
 uv run katib
