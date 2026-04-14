@@ -87,8 +87,11 @@ Use this if you just want to install and run Katib.
 
 ### Step 1: Download
 
-1. Open the latest GitHub Release.
-2. Download `Katib-x86_64.AppImage`.
+1. Open the latest GitHub Release:
+   https://github.com/salimhabeshawi/katib/releases/latest
+2. Or open different releases:
+   https://github.com/salimhabeshawi/katib/releases
+3. Download `Katib-x86_64.AppImage`.
 
 ### Step 2: Move It to an Apps Folder
 
