@@ -104,7 +104,7 @@ chmod +x "$HOME/Applications/Katib/Katib-x86_64.AppImage"
 "$HOME/Applications/Katib/Katib-x86_64.AppImage"
 ```
 
-### Step 4: Create a Desktop Shortcut (Debian/Ubuntu/Linux Mint/Pop!_OS)
+### Step 4: Create a Desktop Shortcut (Debian/Ubuntu/Linux Mint/Pop!\_OS)
 
 ```bash
 mkdir -p "$HOME/.local/share/applications"
