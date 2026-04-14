@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Katib
+Comment=Minimal distraction-free Markdown writing app
+Exec=katib
+Icon=katib
+Categories=Office;TextEditor;
+Terminal=false
+StartupNotify=true

@@ -229,19 +229,51 @@ class MarkdownService:
         safe_direction = "rtl" if direction == "rtl" else "ltr"
         highlighted_text = self._inject_pdf_syntax_highlight(text)
         wrapped_text = self._wrap_pdf_direction_root(highlighted_text, safe_direction)
+        pdf = self._build_pdf_document(
+            wrapped_text,
+            source_root=source_root,
+            direction=safe_direction,
+            title=title,
+            enable_toc=True,
+        )
+        try:
+            pdf.save(str(output_path))
+        except Exception as exc:
+            # markdown-pdf can fail when the first heading level is not H1.
+            # Retry without TOC/bookmarks so export still succeeds.
+            if "hierarchy level of item 0 must be 1" not in str(exc):
+                raise
+            fallback_pdf = self._build_pdf_document(
+                wrapped_text,
+                source_root=source_root,
+                direction=safe_direction,
+                title=title,
+                enable_toc=False,
+            )
+            fallback_pdf.save(str(output_path))
+
+    def _build_pdf_document(
+        self,
+        wrapped_text: str,
+        *,
+        source_root: Path,
+        direction: str,
+        title: str,
+        enable_toc: bool,
+    ) -> MarkdownPdf:
+        """Create a configured MarkdownPdf instance with one document section."""
         pdf = MarkdownPdf(toc_level=6, optimize=True)
         # markdown_pdf uses markdown-it with HTML disabled by default.
         # Enable raw HTML so our RTL wrapper div and inline direction styles apply.
         pdf.m_d.options["html"] = True
         pdf.meta["title"] = title
-
         section = Section(
             wrapped_text,
             root=str(source_root),
-            toc=True,
+            toc=enable_toc,
         )
-        pdf.add_section(section, user_css=self._pdf_css(safe_direction))
-        pdf.save(str(output_path))
+        pdf.add_section(section, user_css=self._pdf_css(direction))
+        return pdf
 
     def _wrap_pdf_direction_root(self, text: str, direction: str) -> str:
         """Wrap exported markdown in a root element that locks direction for PDF."""
